@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Net Redirect</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="side-top drag"></div>
+        <div class="brand">
+          <span class="brand-icon">⇄</span> Net Redirect
+        </div>
+        <nav class="nav">
+          <button class="side-item active" data-view="rules">转发规则</button>
+          <button class="side-item" data-view="tunnels">SSH 隧道</button>
+          <button class="side-item" data-view="flow">流量走向</button>
+        </nav>
+        <div class="side-bottom">
+          <span id="statusDot" class="dot stopped"></span>
+          <span id="statusText">已停止</span>
+        </div>
+      </aside>
+
+      <div class="content">
+        <div id="errorBox" class="hidden"></div>
+
+        <div id="view-rules">
+          <div class="page-header">
+            <div>
+              <h2>转发规则</h2>
+              <p class="muted">访问「源地址」的系统流量会被转发到「目标地址」，仅支持 TCP / IPv4</p>
+            </div>
+            <div class="controls">
+              <button id="nopassBtn" class="ghost hidden" title="配置后启动/停止/退出不再弹授权框">配置免密</button>
+              <button id="toggleBtn" class="primary">启动重定向</button>
+            </div>
+          </div>
+
+          <section class="card">
+            <div class="card-head">
+              <h3>规则列表</h3>
+              <button id="addRuleBtn" class="primary">＋ 添加规则</button>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>名称</th>
+                  <th>源地址</th>
+                  <th>目标地址</th>
+                  <th>本地端口</th>
+                  <th>启用</th>
+                  <th class="col-actions">操作</th>
+                </tr>
+              </thead>
+              <tbody id="rulesBody"></tbody>
+            </table>
+            <p id="emptyHint" class="hint">暂无规则，点击右上角「添加规则」。目标地址填 127.0.0.1 / localhost 时自动走系统直通模式。</p>
+          </section>
+
+          <section class="card">
+            <div class="card-head"><h3>运行日志</h3></div>
+            <pre id="logs" class="logs">（暂无日志）</pre>
+          </section>
+        </div>
+
+        <div id="view-tunnels" class="hidden">
+          <div class="page-header">
+            <div>
+              <h2>SSH 隧道</h2>
+              <p class="muted">等效 ssh -L 本地端口:远端地址:远端端口，断线自动重连；服务器连接可复用</p>
+            </div>
+            <div class="controls">
+              <span id="tunnelStatusText" class="muted">隧道未启动</span>
+              <button id="tunnelToggleBtn" class="primary">启动隧道</button>
+            </div>
+          </div>
+
+          <section class="card">
+            <div class="card-head">
+              <h3>服务器连接</h3>
+              <button id="addServerBtn" class="primary">＋ 添加服务器</button>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>名称</th>
+                  <th>地址</th>
+                  <th>用户名</th>
+                  <th>认证</th>
+                  <th>隧道数</th>
+                  <th class="col-actions">操作</th>
+                </tr>
+              </thead>
+              <tbody id="serversBody"></tbody>
+            </table>
+            <p id="serversEmptyHint" class="hint">暂无服务器连接。提示：密码以明文保存在本机配置目录（servers.json，权限 0600），介意的话请用密钥认证。</p>
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <h3>隧道列表</h3>
+              <button id="addTunnelBtn" class="primary">＋ 添加隧道</button>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>名称</th>
+                  <th>本地监听</th>
+                  <th>远端目标</th>
+                  <th>服务器</th>
+                  <th>状态</th>
+                  <th>启用</th>
+                  <th class="col-actions">操作</th>
+                </tr>
+              </thead>
+              <tbody id="tunnelsBody"></tbody>
+            </table>
+            <p id="tunnelsEmptyHint" class="hint">暂无隧道。先添加服务器连接，再添加隧道。</p>
+          </section>
+        </div>
+
+        <div id="view-flow" class="hidden">
+          <div class="page-header">
+            <div>
+              <h2>流量走向</h2>
+              <p class="muted">实时展示每条启用规则的流量路径；运行时粒子流动，停止时变暗</p>
+            </div>
+          </div>
+          <section class="card">
+            <canvas id="flowCanvas"></canvas>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <!-- 规则弹窗 -->
+    <div id="ruleModal" class="modal-mask hidden">
+      <div class="modal">
+        <h3 id="ruleModalTitle">添加规则</h3>
+        <form id="ruleForm">
+          <input type="hidden" id="ruleId" />
+          <div class="form-col">
+            <label>名称<input id="name" placeholder="例如：108 数据库转发" /></label>
+            <div class="form-row">
+              <label>源 IP<input id="srcIp" placeholder="1.2.3.4" required /></label>
+              <label>源端口<input id="srcPort" type="number" min="1" max="65535" placeholder="60225" required /></label>
+            </div>
+            <div class="form-row">
+              <label>目标地址<input id="dstHost" placeholder="10.0.0.2 或 example.com" required /></label>
+              <label>目标端口<input id="dstPort" type="number" min="1" max="65535" placeholder="50001" required /></label>
+            </div>
+            <div id="directHint" class="hint hidden">目标为本机回环地址：将使用直通模式，由系统直接改写目的地，不占用本地代理端口</div>
+            <label class="checkbox"><input id="enabled" type="checkbox" checked /> 启用该规则</label>
+          </div>
+          <div class="modal-actions">
+            <button type="button" id="cancelEdit" class="ghost">取消</button>
+            <button type="submit" class="primary" id="saveBtn">保存</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- 服务器弹窗 -->
+    <div id="serverModal" class="modal-mask hidden">
+      <div class="modal">
+        <h3 id="serverModalTitle">添加服务器</h3>
+        <form id="serverForm">
+          <input type="hidden" id="srvId" />
+          <div class="form-col">
+            <label>名称<input id="srvName" placeholder="例如：生产跳板机" /></label>
+            <div class="form-row">
+              <label>主机<input id="srvHost" placeholder="jump.example.com" required /></label>
+              <label>端口<input id="srvPort" type="number" min="1" max="65535" value="22" required /></label>
+            </div>
+            <label>用户名<input id="srvUser" placeholder="root" required /></label>
+            <label>认证方式
+              <select id="srvAuth">
+                <option value="password">密码</option>
+                <option value="key">密钥文件</option>
+              </select>
+            </label>
+            <label id="srvPassWrap">密码<input id="srvPass" type="password" placeholder="SSH 密码" autocomplete="off" /></label>
+            <label id="srvKeyWrap" class="hidden">密钥路径<input id="srvKeyPath" placeholder="/Users/xxx/.ssh/id_ed25519" /></label>
+            <label id="srvKeyPassWrap" class="hidden">密钥口令<input id="srvKeyPass" type="password" placeholder="可留空" autocomplete="off" /></label>
+          </div>
+          <div class="modal-actions">
+            <button type="button" id="srvCancelEdit" class="ghost">取消</button>
+            <button type="submit" class="primary" id="srvSaveBtn">保存</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- 隧道弹窗 -->
+    <div id="tunnelModal" class="modal-mask hidden">
+      <div class="modal">
+        <h3 id="tunnelModalTitle">添加隧道</h3>
+        <form id="tunnelForm">
+          <input type="hidden" id="tunId" />
+          <div class="form-col">
+            <label>名称<input id="tunName" placeholder="例如：到生产 DB" /></label>
+            <label>服务器连接<select id="tunServer"></select></label>
+            <div class="form-row">
+              <label>本地端口<input id="tunLocalPort" type="number" min="1" max="65535" placeholder="50001" required /></label>
+              <label class="checkbox"><input id="tunEnabled" type="checkbox" checked /> 启用该隧道</label>
+            </div>
+            <div class="form-row">
+              <label>远端地址<input id="tunRemoteHost" placeholder="数据库真实地址" required /></label>
+              <label>远端端口<input id="tunRemotePort" type="number" min="1" max="65535" placeholder="60225" required /></label>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button type="button" id="tunCancelEdit" class="ghost">取消</button>
+            <button type="submit" class="primary" id="tunSaveBtn">保存</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script src="main.js"></script>
+  </body>
+</html>
