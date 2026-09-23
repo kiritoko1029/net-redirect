@@ -1,6 +1,6 @@
 [package]
 name = "net-redirect"
-version = "0.7.2"
+version = "0.7.3"
 description = "Redirect system traffic to another host:port (pf + local TCP proxy)"
 edition = "2021"
 
