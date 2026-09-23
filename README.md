@@ -31,6 +31,14 @@ npx @tauri-apps/cli@latest build    # macOS .app
 npx @tauri-apps/cli@latest build --runner cargo-xwin --target x86_64-pc-windows-msvc --bundles nsis
 ```
 
+## 发布
+
+```bash
+git tag v0.x.x && git push origin v0.x.x
+```
+
+推送版本标签后，GitHub Actions 会在 macOS / Windows 原生 runner 上自动构建并创建 Release（含 dmg / nsis 安装包）。
+
 ## 安全说明
 
 - macOS 下加载/清除 pf 规则需要管理员权限（弹授权框）；点一次「配置免密」后写入 `/etc/sudoers.d/netredirect`（仅放行所需固定命令），之后不再弹窗。删除该文件即可还原
